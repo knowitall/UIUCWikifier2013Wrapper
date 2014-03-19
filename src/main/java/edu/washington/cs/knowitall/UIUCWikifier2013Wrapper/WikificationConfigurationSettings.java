@@ -1,74 +1,76 @@
 package edu.washington.cs.knowitall.UIUCWikifier2013Wrapper;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang3.StringEscapeUtils;
 
-import edu.illinois.cs.cogcomp.edison.sentences.TextAnnotation;
 import edu.illinois.cs.cogcomp.wikifier.common.GlobalParameters;
-import edu.illinois.cs.cogcomp.wikifier.common.GlobalParameters.SettingManager;
 import edu.illinois.cs.cogcomp.wikifier.common.GlobalPaths;
-import edu.illinois.cs.cogcomp.wikifier.inference.InferenceEngine;
-import edu.illinois.cs.cogcomp.wikifier.models.LinkingProblem;
-import edu.illinois.cs.cogcomp.wikifier.models.Mention;
-import edu.illinois.cs.cogcomp.wikifier.models.ReferenceInstance;
+import edu.illinois.cs.cogcomp.wikifier.common.GlobalParameters.SettingManager;
+import edu.illinois.cs.cogcomp.wikifier.common.ParameterPresets;
+import edu.illinois.cs.cogcomp.wikifier.common.WikifierParameters;
 
-
-public class UIUCWikifier2013Wrapper {
+public class WikificationConfigurationSettings {
 	
 	private static final String pathToDefaultNERConfigFile = "configs/NER.config";
 	private static final String pathToDefaultNEConfigFile = "data/NESimdata/config.txt";
 	private static final String pathToDefaultJWNLConfigFile = "configs/jwnl_properties.xml";
 	
+	private static void setGlobalParameterPaths(String pathToWikifierResources) throws FileNotFoundException, IOException{
+		String[]  newConfigPaths = writeNewConfigFiles(pathToWikifierResources);
+		GlobalParameters.paths = setGlobalPaths(pathToWikifierResources,newConfigPaths[0],newConfigPaths[1],newConfigPaths[2]);
+	}
 	
-	public static void main(String[] args) throws Exception{
-		String pathToWikifierFiles = args[0];
-		String[] newConfigPaths = writeNewConfigFiles(pathToWikifierFiles);
-//		for(String s : newConfigPaths){
-//			System.out.println(s);
-//		}
-		GlobalParameters.loadSettings(getSettingManager(pathToWikifierFiles,newConfigPaths[0],newConfigPaths[1],newConfigPaths[2]));
-        InferenceEngine inference = new InferenceEngine(false);
-        
-        
-        System.out.println(Runtime.getRuntime().availableProcessors());
-        System.out.println(GlobalParameters.THREAD_NUM);
-
-//		String fileName = args[1];
-//		String fileText = IOUtils.toString(new BufferedReader(new FileReader(new File(fileName))));
-        
-        File inputDir = new File(args[1]);
-        File outputDir = new File(args[2]);
-        for(File f : inputDir.listFiles()){
-        	BufferedWriter bw = new BufferedWriter(new FileWriter(outputDir.getAbsolutePath()+"/"+f.getName()+".out"));
-	    	try{
-	    		String fileName = f.getName();
-	    		String fileText = IOUtils.toString(new BufferedReader(new FileReader(new File(f.getAbsolutePath()))));
-				TextAnnotation ta = GlobalParameters.curator.getTextAnnotation(fileText); 
-				LinkingProblem problem=new LinkingProblem(fileName, ta, new ArrayList<ReferenceInstance>());
-				inference.annotate(problem, null, false, false, 0);
-				String output = getWikifierOutput(problem);
-				bw.write(output);
-		
-	    	}
-			catch(Exception e){
-				bw.write("ERROR");
-			}
-	    	bw.close();
-        }
+	public static void standAloneGurobiSettings(String pathToWikifierResources) throws Exception{
+		setGlobalParameters(pathToWikifierResources,ParameterPresets.STAND_ALONE_GUROBI);
+	}
+	
+	public static void fullSettings(String pathToWikifierResources) throws Exception{
+		setGlobalParameters(pathToWikifierResources,ParameterPresets.FULL);
 	}
 
+	public static void standAloneNoInferenceSettings(String pathToWikifierResources) throws Exception {
+		setGlobalParameters(pathToWikifierResources,ParameterPresets.STAND_ALONE_NO_INFERENCE);
+	}
+	
+	private static void setGlobalParameters(String pathToWikifierResources, ParameterPresets pp) throws Exception{
+		//set GlobalParameters.params to STAND_ALONE_NO_INFERENCE via ParameterPresets
+		WikifierParameters wp = WikifierParameters.defaultInstance();
+		wp.preset = pp;
+		wp.preset.apply();
+		//override GlobalParameters.paths to custom paths to temporary files so it can
+		//run in a different directory
+		setGlobalParameterPaths(pathToWikifierResources);
+		//create Setting Manager such that all current globalParameters settings are preserved
+		SettingManager sm = new SettingManager(new Object());
+		GlobalParameters.loadSettings(sm);
+	}
+	
+	private static GlobalPaths setGlobalPaths(String prefix, String nerConfigFile, String neConfigFile, String wordNetConfigFile) {
+		GlobalPaths gp = new GlobalPaths();
+        gp.compressedRedirects = prefix+"/"+"data/WikiData/Redirects/2013-05-28.redirect";
+        gp.protobufferAccessDir = prefix+"/"+"data/Lucene4Index/";
+        gp.curatorCache = prefix+"/"+"data/TextAnnotationCache/";
+        gp.wikiRelationIndexDir = prefix+"/"+"data/WikiData/Index/WikiRelation/";
+        gp.models = prefix+"/"+"data/Models/TitleMatchPlusLexicalPlusCoherence/";
+        gp.titleStringIndex = prefix+"/"+"data/WikiData/Index/TitleAndRedirects/";
+        gp.wordnetConfig = wordNetConfigFile;
+        gp.stopwords = prefix+"/"+"data/OtherData/stopwords_big";
+        gp.wordNetDictionaryPath = prefix+"/"+"data/WordNet/";
+        gp.nerConfig = nerConfigFile;
+        gp.wikiSummary = null;
+        gp.neSimPath = neConfigFile;
+        
+        return gp;
+	}
+	
 	/**
 	 * Read in NER and NE default config files, write out new config files
 	 * with appropriate paths then save config file and return its location
@@ -170,59 +172,6 @@ public class UIUCWikifier2013Wrapper {
 		wnWriter.close();
 		
 		return configFiles;
-
-		
-
 	}
-
-	private static GlobalPaths setGlobalPaths(String prefix, String nerConfigFile, String neConfigFile, String wordNetConfigFile) {
-		GlobalPaths gp = new GlobalPaths();
-        gp.compressedRedirects = prefix+"/"+"data/WikiData/Redirects/2013-05-28.redirect";
-        gp.protobufferAccessDir = prefix+"/"+"data/Lucene4Index/";
-        gp.curatorCache = prefix+"/"+"data/TextAnnotationCache/";
-        gp.wikiRelationIndexDir = prefix+"/"+"data/WikiData/Index/WikiRelation/";
-        gp.models = prefix+"/"+"data/Models/TitleMatchPlusLexicalPlusCoherence/";
-        gp.titleStringIndex = prefix+"/"+"data/WikiData/Index/TitleAndRedirects/";
-        gp.wordnetConfig = wordNetConfigFile;
-        gp.stopwords = prefix+"/"+"data/OtherData/stopwords_big";
-        gp.wordNetDictionaryPath = prefix+"/"+"data/WordNet/";
-        gp.nerConfig = nerConfigFile;
-        gp.wikiSummary = null;
-        gp.neSimPath = neConfigFile;
-        return gp;
-	}
-	
-	private static SettingManager getSettingManager(String pathToWikifierData, String nerConfigFile, String neConfigFile, String wordNetConfigFile){
-		SettingManager sm = new SettingManager();
-		sm.paths = setGlobalPaths(pathToWikifierData,nerConfigFile,neConfigFile,wordNetConfigFile);
-		return sm;
-	}
-
-	public static String getWikifierOutput(LinkingProblem problem) {
-	    StringBuilder res = new StringBuilder();
-
-		for(Mention entity : problem.components){
-			if(entity.topCandidate == null)
-				continue;
-			String escapedSurface = StringEscapeUtils.escapeXml(entity.surfaceForm.replace('\n', ' '));
-			res.append(entity.charStart);
-			res.append(":");
-			res.append(entity.charStart + entity.charLength);
-			res.append(" ");
-			res.append(entity.topCandidate.titleName);
-			res.append(" ");
-			res.append(String.format("%3f",entity.linkerScore));
-			res.append(" ");
-			res.append(String.format("%3f",entity.topCandidate.rankerScore));
-			res.append(" ");
-			res.append(escapedSurface);
-			res.append("\t");
-		}
-		return res.toString().trim();
-	}
-	
-    public static String getTitleCategories(String title) {
-        return StringUtils.join(GlobalParameters.getCategories(title),'\t');
-    }
 
 }
